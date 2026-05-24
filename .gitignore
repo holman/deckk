@@ -1,0 +1,6 @@
+# Anchor to repo root so the compiled binary is ignored but the
+# cmd/deckk/ source directory isn't.
+/deckk
+/dist/
+*.pdf
+.DS_Store
