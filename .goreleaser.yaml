@@ -1,0 +1,65 @@
+version: 2
+
+project_name: deckk
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: deckk
+    main: ./cmd/deckk
+    binary: deckk
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: deckk
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - name: deckk
+    repository:
+      owner: holman
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/holman/deckk"
+    description: "Point a URL at it, get a PDF (pitch decks, docsend, etc.)"
+    license: "MIT"
+    install: |
+      bin.install "deckk"
+    test: |
+      system "#{bin}/deckk", "-h"
+    caveats: |
+      deckk drives a headless Chrome over the DevTools Protocol. If you
+      don't already have Chrome installed:
+
+        brew install --cask google-chrome

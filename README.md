@@ -1,0 +1,63 @@
+# deckk
+
+Point it at a URL, get a PDF.
+
+Primarily aimed at pitch decks, so angel investors, venture capitalists, and
+other weird people can get the actual deck locally and can upload it to a
+portfolio management tool, like [Signed](https://signed.com).
+
+```
+$ deckk "https://docsend.com/view/abc123"
+PDF saved to ~/Desktop/deck.pdf
+```
+
+## Install
+
+**Homebrew (macOS / Linux):**
+
+```
+brew install holman/tap/deckk
+```
+
+**With Go:**
+
+```
+go install github.com/holman/deckk/cmd/deckk@latest
+```
+
+Either way, you'll need Google Chrome (or Chromium) installed locally —
+`deckk` drives it headlessly in the background. On macOS:
+
+```
+brew install --cask google-chrome
+```
+
+## Usage
+
+```
+deckk <url> [-o output.pdf] [--email you@example.com] [--headful]
+```
+
+Flags:
+
+- `-o, --output` — output path (default: `~/Desktop/deck.pdf`)
+- `--email` — email to use when a deck is gated. Defaults to your
+  `git config user.email`. Only sent if the deck actually prompts for one.
+- `--headful` — show the browser window (useful for debugging an adapter)
+- `--timeout` — total timeout (default: `2m`)
+
+## Adapters
+
+`deckk` picks an adapter based on the URL. Today:
+
+- **docsend** — handles `docsend.com/view/...` decks. Drives the viewer in
+  headless Chrome, walks through each slide with the arrow key, captures a
+  tight screenshot of just the slide, and stitches them into a PDF. Handles
+  the email gate automatically if `--email` (or `git user.email`) is set.
+
+Adding a new adapter means implementing one interface in `internal/adapter` and
+registering it. PRs welcome.
+
+## License
+
+MIT
