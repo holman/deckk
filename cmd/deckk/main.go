@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -27,21 +28,28 @@ func main() {
 
 func run() error {
 	var (
-		output  string
-		headful bool
-		email   string
-		timeout time.Duration
+		output      string
+		headful     bool
+		email       string
+		timeout     time.Duration
+		showVersion bool
 	)
 	flag.StringVar(&output, "o", defaultOutput(), "output PDF path")
 	flag.StringVar(&output, "output", defaultOutput(), "output PDF path")
 	flag.BoolVar(&headful, "headful", false, "show the browser window (debugging)")
 	flag.StringVar(&email, "email", "", "email to use for email-gated decks (defaults to git user.email)")
 	flag.DurationVar(&timeout, "timeout", 2*time.Minute, "total timeout")
+	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: deckk [flags] <url>\n\nFlags:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if showVersion {
+		fmt.Println(version())
+		return nil
+	}
 
 	if flag.NArg() != 1 {
 		flag.Usage()
@@ -111,6 +119,17 @@ func defaultOutput() string {
 		return "deck.pdf"
 	}
 	return filepath.Join(home, "Desktop", "deck.pdf")
+}
+
+// version reports the module version baked into the binary by `go install`
+// or `go build` of a tagged module. Returns "dev" when no version is
+// available (e.g. plain `go build` inside the repo).
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "dev"
+	}
+	return info.Main.Version
 }
 
 func adapterNames() string {
