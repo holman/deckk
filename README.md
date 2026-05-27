@@ -54,6 +54,10 @@ Flags:
   headless Chrome, walks through each slide with the arrow key, captures a
   tight screenshot of just the slide, and stitches them into a PDF. Handles
   the email gate automatically if `--email` (or `git user.email`) is set.
+- **canva** — handles `canva.com/design/.../view` decks. Loads the public
+  view page, finds the slide player, then walks through each slide with
+  the arrow key and screenshots them into a PDF. Only works for publicly
+  shared view links (no Canva login).
 
 Adding a new adapter means implementing one interface in `internal/adapter` and
 registering it. PRs welcome.

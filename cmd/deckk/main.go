@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/holman/deckk/internal/adapter"
+	_ "github.com/holman/deckk/internal/adapter/canva"
 	_ "github.com/holman/deckk/internal/adapter/docsend"
 	"github.com/holman/deckk/internal/pdf"
 )
