@@ -2,6 +2,7 @@ package canva
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/url"
 	"os"
@@ -211,31 +212,53 @@ func (a *Adapter) Fetch(ctx context.Context, rawURL string, opts adapter.Options
 	}
 
 	playerRect := viewportRect{X: det.X, Y: det.Y, W: det.W, H: det.H}
-	total := det.Count
-	if total == 0 {
-		// Slide-content filter culled everything — fall back to cluster
-		// size so we still produce something the user can inspect.
-		total = det.ClusterSize
+	// The detected count is a heuristic upper bound — overlays (end card,
+	// "more from Canva") can sneak through `looksLikeSlide`, and the
+	// fallback path uses the unfiltered cluster size. Treat it as a safety
+	// cap and stop early once ArrowRight stops producing a new image.
+	maxSlides := det.Count
+	if maxSlides == 0 {
+		maxSlides = det.ClusterSize
 	}
-	fmt.Fprintf(os.Stderr, "deck has %d slide(s)\n", total)
+	fmt.Fprintf(os.Stderr, "deck has up to %d slide(s)\n", maxSlides)
 
-	slides := make([]adapter.Slide, 0, total)
-	for i := 1; i <= total; i++ {
+	var slides []adapter.Slide
+	var lastHash [32]byte
+	for i := 1; i <= maxSlides; i++ {
 		if i > 1 {
-			if err := chromedp.Run(bctx,
-				chromedp.KeyEvent(kb.ArrowRight),
-				chromedp.Sleep(500*time.Millisecond),
-			); err != nil {
+			if err := chromedp.Run(bctx, chromedp.KeyEvent(kb.ArrowRight)); err != nil {
 				return nil, fmt.Errorf("advance to slide %d: %w", i, err)
 			}
 		}
-		if err := chromedp.Run(bctx, chromedp.Evaluate(hideOverlaysJS, nil)); err != nil {
+		if err := chromedp.Run(bctx,
+			chromedp.Sleep(500*time.Millisecond),
+			chromedp.Evaluate(hideOverlaysJS, nil),
+		); err != nil {
 			return nil, err
 		}
 		shot, err := captureViewportClip(bctx, playerRect)
 		if err != nil {
 			return nil, fmt.Errorf("screenshot slide %d: %w", i, err)
 		}
+		h := sha256.Sum256(shot)
+		if i > 1 && h == lastHash {
+			// ArrowRight didn't change the rendered slide. Could be a slow
+			// transition or we're past the end of the deck — give it one
+			// more beat before deciding.
+			if err := chromedp.Run(bctx, chromedp.Sleep(1500*time.Millisecond)); err != nil {
+				return nil, err
+			}
+			shot, err = captureViewportClip(bctx, playerRect)
+			if err != nil {
+				return nil, fmt.Errorf("screenshot slide %d: %w", i, err)
+			}
+			h = sha256.Sum256(shot)
+			if h == lastHash {
+				fmt.Fprintf(os.Stderr, "end of deck after %d slide(s)\n", len(slides))
+				break
+			}
+		}
+		lastHash = h
 		slides = append(slides, adapter.Slide{Data: shot, ContentType: "image/png"})
 	}
 
