@@ -58,6 +58,10 @@ Flags:
   view page, finds the slide player, then walks through each slide with
   the arrow key and screenshots them into a PDF. Only works for publicly
   shared view links (no Canva login).
+- **pitch** — handles `pitch.com/v/...` decks. Loads the public player,
+  reads the slide counter, then walks through each slide with the arrow key
+  and screenshots just the slide into a PDF. Only works for publicly shared
+  player links.
 
 Adding a new adapter means implementing one interface in `internal/adapter` and
 registering it. PRs welcome.
