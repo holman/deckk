@@ -16,6 +16,7 @@ import (
 	"github.com/holman/deckk/internal/adapter"
 	_ "github.com/holman/deckk/internal/adapter/canva"
 	_ "github.com/holman/deckk/internal/adapter/docsend"
+	_ "github.com/holman/deckk/internal/adapter/googleslides"
 	_ "github.com/holman/deckk/internal/adapter/pitch"
 	"github.com/holman/deckk/internal/pdf"
 )
@@ -76,11 +77,29 @@ func run() error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Using %s adapter…\n", a.Name())
-	slides, err := a.Fetch(ctx, rawURL, adapter.Options{Headful: headful, Email: email})
-	if err != nil {
-		return err
+	opts := adapter.Options{Headful: headful, Email: email}
+
+	// Some sources (e.g. Google Slides) expose a ready-made PDF export, so
+	// there's nothing to screenshot or stitch — just save the bytes.
+	var pdfBytes []byte
+	if pf, ok := a.(adapter.PDFFetcher); ok {
+		data, err := pf.FetchPDF(ctx, rawURL, opts)
+		if err != nil {
+			return err
+		}
+		pdfBytes = data
+		fmt.Fprintf(os.Stderr, "Fetched deck PDF directly. Writing…\n")
 	}
-	fmt.Fprintf(os.Stderr, "Fetched %d slide(s). Writing PDF…\n", len(slides))
+
+	var slides []adapter.Slide
+	if pdfBytes == nil {
+		var err error
+		slides, err = a.Fetch(ctx, rawURL, opts)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Fetched %d slide(s). Writing PDF…\n", len(slides))
+	}
 
 	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
 		return err
@@ -91,7 +110,11 @@ func run() error {
 	}
 	defer f.Close()
 
-	if err := pdf.Write(f, slides); err != nil {
+	if pdfBytes != nil {
+		if _, err := f.Write(pdfBytes); err != nil {
+			return err
+		}
+	} else if err := pdf.Write(f, slides); err != nil {
 		return err
 	}
 

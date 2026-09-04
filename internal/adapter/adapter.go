@@ -17,6 +17,15 @@ type Adapter interface {
 	Fetch(ctx context.Context, rawURL string, opts Options) ([]Slide, error)
 }
 
+// PDFFetcher is an optional interface for adapters whose source can hand
+// over the whole deck as a ready-made PDF (e.g. an export endpoint), so
+// there's no need to screenshot slide-by-slide. When an adapter implements
+// it, the CLI calls FetchPDF instead of Fetch and writes the bytes straight
+// to the output file.
+type PDFFetcher interface {
+	FetchPDF(ctx context.Context, rawURL string, opts Options) ([]byte, error)
+}
+
 // Options carries CLI-level toggles that an adapter may need to honor.
 type Options struct {
 	Headful bool
