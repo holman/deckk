@@ -44,7 +44,7 @@ Flags:
 - `--email` — email to use when a deck is gated. Defaults to your
   `git config user.email`. Only sent if the deck actually prompts for one.
 - `--headful` — show the browser window (useful for debugging an adapter)
-- `--timeout` — total timeout (default: `2m`)
+- `--timeout` — total timeout (default: `5m`)
 
 ## Adapters
 
@@ -54,10 +54,12 @@ Flags:
   headless Chrome, walks through each slide with the arrow key, captures a
   tight screenshot of just the slide, and stitches them into a PDF. Handles
   the email gate automatically if `--email` (or `git user.email`) is set.
-- **canva** — handles `canva.com/design/.../view` decks. Loads the public
-  view page, finds the slide player, then walks through each slide with
-  the arrow key and screenshots them into a PDF. Only works for publicly
-  shared view links (no Canva login).
+- **canva** — handles `canva.com/design/.../view` decks and `canva.link`
+  short links. Loads the public view page, reads the page count from the
+  player, then walks through each slide with the arrow key. Canva plays
+  per-slide animations on entry, so `deckk` waits for the rendered slide to
+  stop changing before screenshotting it (about 5–7s per animated slide).
+  Only works for publicly shared view links (no Canva login).
 - **google-slides** — handles `docs.google.com/presentation/d/...` decks.
   No browser involved: Slides exposes the same PDF that File → Download
   produces at an export URL, so `deckk` just downloads it directly. Works

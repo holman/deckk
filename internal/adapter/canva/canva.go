@@ -30,7 +30,11 @@ func (a *Adapter) Matches(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Host)
-	return host == "canva.com" || strings.HasSuffix(host, ".canva.com")
+	// canva.link is Canva's short-link domain ("Share → Copy link" hands
+	// out these). It 302s to the full canva.com/design/.../view URL, which
+	// Chrome follows for us.
+	return host == "canva.com" || strings.HasSuffix(host, ".canva.com") ||
+		host == "canva.link" || strings.HasSuffix(host, ".canva.link")
 }
 
 type viewportRect struct {
@@ -175,6 +179,51 @@ const hideOverlaysJS = `
 })()
 `
 
+// pageStateJS reads Canva's own idea of where we are in the deck. The
+// /view player exposes a "Go to page" slider (role=slider) whose
+// aria-valuemax is the real page count and aria-valuenow the current
+// page. The URL hash also tracks the current page ("#3"). Both are far
+// more trustworthy than counting stacked DOM boxes, so we prefer them and
+// only fall back to the cluster heuristic if neither is present.
+const pageStateJS = `
+(() => {
+  let total = 0, current = 0;
+  const sl = document.querySelector('[role="slider"]');
+  if (sl) {
+    total = parseInt(sl.getAttribute('aria-valuemax') || '0', 10) || 0;
+    current = parseInt(sl.getAttribute('aria-valuenow') || '0', 10) || 0;
+  }
+  if (!total) {
+    const m = (document.body.innerText || '').match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) { current = parseInt(m[1], 10); total = parseInt(m[2], 10); }
+  }
+  const hm = (location.hash || '').match(/^#(\d+)$/);
+  const hashPage = hm ? parseInt(hm[1], 10) : 0;
+  if (!current && hashPage) current = hashPage;
+  return { total, current, hashPage };
+})()
+`
+
+type pageState struct {
+	Total    int `json:"total"`
+	Current  int `json:"current"`
+	HashPage int `json:"hashPage"`
+}
+
+// Timing knobs for the animation wait. Canva plays each page's element
+// animations (fade/rise/pan…) on entry and drives them from JS, so there's
+// no DOM or Web Animations signal to hook — the only honest "done" is
+// "the pixels stopped changing". We poll clipped screenshots and accept a
+// frame once it has repeated stableSamples times in a row. maxSettle caps
+// how long a looping element (GIF, video, infinite animation) can hold us
+// up; after that we take the latest frame and move on.
+const (
+	settlePoll    = 300 * time.Millisecond
+	stableSamples = 3
+	maxSettle     = 12 * time.Second
+	pageFlipWait  = 3 * time.Second
+)
+
 func (a *Adapter) Fetch(ctx context.Context, rawURL string, opts adapter.Options) ([]adapter.Slide, error) {
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
@@ -210,62 +259,129 @@ func (a *Adapter) Fetch(ctx context.Context, rawURL string, opts adapter.Options
 	if det == nil || det.ClusterSize == 0 {
 		return nil, fmt.Errorf("could not find slide player on the page")
 	}
-
 	playerRect := viewportRect{X: det.X, Y: det.Y, W: det.W, H: det.H}
-	// The detected count is a heuristic upper bound — overlays (end card,
-	// "more from Canva") can sneak through `looksLikeSlide`, and the
-	// fallback path uses the unfiltered cluster size. Treat it as a safety
-	// cap and stop early once ArrowRight stops producing a new image.
-	maxSlides := det.Count
-	if maxSlides == 0 {
-		maxSlides = det.ClusterSize
+
+	var st pageState
+	if err := chromedp.Run(bctx, chromedp.Evaluate(pageStateJS, &st)); err != nil {
+		return nil, fmt.Errorf("read page state: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "deck has up to %d slide(s)\n", maxSlides)
+	// Prefer Canva's own page counter. Without it, fall back to the DOM
+	// cluster heuristic, which is only an upper bound — the duplicate-frame
+	// check below stops us early in that case.
+	total := st.Total
+	exact := total > 0
+	if !exact {
+		total = det.Count
+		if total == 0 {
+			total = det.ClusterSize
+		}
+	}
+	if exact {
+		fmt.Fprintf(os.Stderr, "deck has %d slide(s)\n", total)
+	} else {
+		fmt.Fprintf(os.Stderr, "deck has up to %d slide(s)\n", total)
+	}
 
 	var slides []adapter.Slide
 	var lastHash [32]byte
-	for i := 1; i <= maxSlides; i++ {
+	for i := 1; i <= total; i++ {
 		if i > 1 {
 			if err := chromedp.Run(bctx, chromedp.KeyEvent(kb.ArrowRight)); err != nil {
 				return nil, fmt.Errorf("advance to slide %d: %w", i, err)
 			}
+			if exact {
+				if err := waitForPage(bctx, i); err != nil {
+					return nil, fmt.Errorf("advance to slide %d: %w", i, err)
+				}
+			}
 		}
-		if err := chromedp.Run(bctx,
-			chromedp.Sleep(500*time.Millisecond),
-			chromedp.Evaluate(hideOverlaysJS, nil),
-		); err != nil {
+		if err := chromedp.Run(bctx, chromedp.Evaluate(hideOverlaysJS, nil)); err != nil {
 			return nil, err
 		}
-		shot, err := captureViewportClip(bctx, playerRect)
+		shot, err := captureSettled(bctx, playerRect)
 		if err != nil {
 			return nil, fmt.Errorf("screenshot slide %d: %w", i, err)
 		}
 		h := sha256.Sum256(shot)
 		if i > 1 && h == lastHash {
-			// ArrowRight didn't change the rendered slide. Could be a slow
-			// transition or we're past the end of the deck — give it one
-			// more beat before deciding.
-			if err := chromedp.Run(bctx, chromedp.Sleep(1500*time.Millisecond)); err != nil {
-				return nil, err
-			}
-			shot, err = captureViewportClip(bctx, playerRect)
-			if err != nil {
-				return nil, fmt.Errorf("screenshot slide %d: %w", i, err)
-			}
-			h = sha256.Sum256(shot)
-			if h == lastHash {
+			if exact {
+				// Canva says there's another page but it rendered
+				// identically to the last one. Most likely a genuinely
+				// duplicated slide; keep it rather than silently dropping
+				// a page the author put there.
+				fmt.Fprintf(os.Stderr, "slide %d looks identical to slide %d; keeping it\n", i, i-1)
+			} else {
 				fmt.Fprintf(os.Stderr, "end of deck after %d slide(s)\n", len(slides))
 				break
 			}
 		}
 		lastHash = h
 		slides = append(slides, adapter.Slide{Data: shot, ContentType: "image/png"})
+		fmt.Fprintf(os.Stderr, "captured slide %d/%d\n", i, total)
 	}
 
 	if len(slides) == 0 {
 		return nil, fmt.Errorf("no slides captured")
 	}
 	return slides, nil
+}
+
+// waitForPage blocks until Canva reports page n as current (slider value
+// or URL hash), so a slow page flip can't be mistaken for "no change".
+func waitForPage(ctx context.Context, n int) error {
+	deadline := time.Now().Add(pageFlipWait)
+	for {
+		var st pageState
+		if err := chromedp.Run(ctx, chromedp.Evaluate(pageStateJS, &st)); err != nil {
+			return err
+		}
+		if st.Current == n || st.HashPage == n {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("player stuck on page %d (wanted %d)", st.Current, n)
+		}
+		if err := chromedp.Run(ctx, chromedp.Sleep(100*time.Millisecond)); err != nil {
+			return err
+		}
+	}
+}
+
+// captureSettled screenshots the player repeatedly until the image stops
+// changing (see the settle constants above), then returns the final frame.
+// This is how we wait out Canva's entry animations without knowing
+// anything about them.
+func captureSettled(ctx context.Context, r viewportRect) ([]byte, error) {
+	deadline := time.Now().Add(maxSettle)
+	var (
+		last    [32]byte
+		shot    []byte
+		repeats int
+	)
+	for {
+		var err error
+		shot, err = captureViewportClip(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		h := sha256.Sum256(shot)
+		if h == last {
+			repeats++
+			if repeats >= stableSamples-1 {
+				return shot, nil
+			}
+		} else {
+			repeats = 0
+			last = h
+		}
+		if time.Now().After(deadline) {
+			fmt.Fprintf(os.Stderr, "slide still animating after %s; capturing as-is\n", maxSettle)
+			return shot, nil
+		}
+		if err := chromedp.Run(ctx, chromedp.Sleep(settlePoll)); err != nil {
+			return nil, err
+		}
+	}
 }
 
 func captureViewportClip(ctx context.Context, r viewportRect) ([]byte, error) {
