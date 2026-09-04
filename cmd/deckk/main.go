@@ -40,7 +40,7 @@ func run() error {
 	flag.StringVar(&output, "output", defaultOutput(), "output PDF path")
 	flag.BoolVar(&headful, "headful", false, "show the browser window (debugging)")
 	flag.StringVar(&email, "email", "", "email to use for email-gated decks (defaults to git user.email)")
-	flag.DurationVar(&timeout, "timeout", 2*time.Minute, "total timeout")
+	flag.DurationVar(&timeout, "timeout", 5*time.Minute, "total timeout")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: deckk [flags] <url>\n\nFlags:\n")
