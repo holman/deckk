@@ -231,24 +231,28 @@ func detectTotalSlides(ctx context.Context) (int, error) {
 }
 
 // waitForSlideReady polls until the visible slide image has a real (non
-// blank.gif) src loaded. Times out after ~10s.
+// blank.gif) src loaded. Times out after ~15s. A missing image is treated
+// as "not yet" until the deadline — DocSend lays slides out lazily and the
+// first poll often races it.
 func waitForSlideReady(ctx context.Context, n int) (slideRect, error) {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
+	var last slideRect
 	for {
 		var r slideRect
 		if err := chromedp.Run(ctx, chromedp.Evaluate(findVisibleSlideJS, &r)); err != nil {
 			return slideRect{}, err
 		}
-		if !r.Found {
-			return slideRect{}, fmt.Errorf("no visible slide image (likely past the real deck)")
-		}
-		if r.Ready && r.W > 0 {
+		last = r
+		if r.Found && r.Ready && r.W > 0 {
 			return r, nil
 		}
 		if time.Now().After(deadline) {
-			return slideRect{}, fmt.Errorf("slide image never loaded (src=%q)", lastSeg(r.Src))
+			if !last.Found {
+				return slideRect{}, fmt.Errorf("no visible slide image (likely past the real deck)")
+			}
+			return slideRect{}, fmt.Errorf("slide image never loaded (src=%q)", lastSeg(last.Src))
 		}
-		if err := chromedp.Run(ctx, chromedp.Sleep(200*time.Millisecond)); err != nil {
+		if err := chromedp.Run(ctx, chromedp.Sleep(300*time.Millisecond)); err != nil {
 			return slideRect{}, err
 		}
 	}
