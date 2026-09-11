@@ -17,6 +17,7 @@ import (
 	_ "github.com/holman/deckk/internal/adapter/canva"
 	_ "github.com/holman/deckk/internal/adapter/docsend"
 	_ "github.com/holman/deckk/internal/adapter/googleslides"
+	_ "github.com/holman/deckk/internal/adapter/papermark"
 	_ "github.com/holman/deckk/internal/adapter/pitch"
 	"github.com/holman/deckk/internal/pdf"
 )
