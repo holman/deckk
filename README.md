@@ -65,6 +65,14 @@ Flags:
   produces at an export URL, so `deckk` just downloads it directly. Works
   for decks shared as "anyone with the link" (a sign-in-only deck errors
   out with a hint).
+- **papermark** — handles `papermark.com/view/...` links. Papermark's
+  viewer asks its API for the deck once and gets back a signed image URL per
+  page, so `deckk` loads the page a single time, catches that response off
+  the wire, and downloads the page images directly — no slide-by-slide
+  paging, and Papermark only records one view. Handles the email gate
+  automatically if `--email` (or `git user.email`) is set. Password-protected
+  links and links that require an emailed verification code are not
+  supported, and custom-domain Papermark links won't be recognized.
 - **pitch** — handles `pitch.com/v/...` decks. Loads the public player,
   reads the slide counter, then walks through each slide with the arrow key
   and screenshots just the slide into a PDF. Only works for publicly shared
