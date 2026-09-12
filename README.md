@@ -85,6 +85,12 @@ Flags:
   and screenshots just the slide into a PDF. Only works for publicly shared
   player links.
 
+- **pdf** — the fallback for any `http(s)` URL no other adapter claims. If
+  the URL serves a PDF, `deckk` saves it as-is. It matches on scheme rather
+  than a `.pdf` suffix because plenty of direct links (CDNs, signed URLs,
+  attachment endpoints) don't end in `.pdf`; the bytes are checked instead,
+  and a non-PDF response errors out with "no deckk adapter for <host>".
+
 Adding a new adapter means implementing one interface in `internal/adapter` and
 registering it. PRs welcome.
 
