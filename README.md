@@ -60,6 +60,13 @@ Flags:
   per-slide animations on entry, so `deckk` waits for the rendered slide to
   stop changing before screenshotting it (about 5–7s per animated slide).
   Only works for publicly shared view links (no Canva login).
+- **google-drive** — handles `drive.google.com/file/d/...` links (and the
+  older `open?id=` / `uc?id=` forms). Drive doesn't convert anything, it
+  just serves whatever was uploaded, so `deckk` downloads the file directly
+  and keeps it if it's a PDF. If the link turns out to point at a native
+  Slides deck, it falls through to the Slides export. Anything else (a
+  `.pptx`, say) errors out with a hint to export it to PDF first. Works for
+  files shared as "anyone with the link".
 - **google-slides** — handles `docs.google.com/presentation/d/...` decks.
   No browser involved: Slides exposes the same PDF that File → Download
   produces at an export URL, so `deckk` just downloads it directly. Works
