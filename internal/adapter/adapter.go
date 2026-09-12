@@ -35,19 +35,37 @@ type Options struct {
 	Email string
 }
 
-var registry []Adapter
+var (
+	registry []Adapter
+	fallback Adapter
+)
 
 func Register(a Adapter) { registry = append(registry, a) }
 
-// Find returns the first registered adapter that claims the URL, or nil.
+// RegisterFallback installs the adapter Find consults only after every
+// site-specific adapter has declined the URL. Package init order isn't
+// something we want to lean on for "try this last", so it's explicit.
+func RegisterFallback(a Adapter) { fallback = a }
+
+// Find returns the first registered adapter that claims the URL, then the
+// fallback adapter if it claims the URL, or nil.
 func Find(rawURL string) Adapter {
 	for _, a := range registry {
 		if a.Matches(rawURL) {
 			return a
 		}
 	}
+	if fallback != nil && fallback.Matches(rawURL) {
+		return fallback
+	}
 	return nil
 }
 
-// All returns every registered adapter (used for --list output).
-func All() []Adapter { return registry }
+// All returns every registered adapter, fallback last (used for --list
+// output).
+func All() []Adapter {
+	if fallback == nil {
+		return registry
+	}
+	return append(append([]Adapter{}, registry...), fallback)
+}
