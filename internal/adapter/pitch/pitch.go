@@ -87,6 +87,14 @@ const hideOverlaysJS = `
     document.querySelectorAll(sel).forEach(hide);
   }
 
+  // Pitch's "Can we log your visit?" consent dialog. It lives in a fixed,
+  // dimmed modal container over the stage; hide the whole container (not
+  // just the form) so the dim backdrop doesn't tint the slides. We don't
+  // click "Agree" — that would opt the user into view tracking.
+  document.querySelectorAll('.platform-player-consent-form').forEach(f => {
+    hide(f.closest('.platform--modal__container') || f);
+  });
+
   // Consent iframes by src (OneTrust/TrustArc/Cookiebot/etc).
   document.querySelectorAll('iframe').forEach(f => {
     const src = (f.src || '') + ' ' + (f.id || '') + ' ' + (typeof f.className === 'string' ? f.className : '');
