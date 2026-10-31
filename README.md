@@ -72,6 +72,17 @@ Flags:
   produces at an export URL, so `deckk` just downloads it directly. Works
   for decks shared as "anyone with the link" (a sign-in-only deck errors
   out with a hint).
+- **notion** — handles public Notion pages: `notion.so/...`,
+  `<workspace>.notion.site/...`, and `app.notion.com/p/...` links. These are
+  documents rather than slide decks, so instead of screenshotting, `deckk`
+  renders the page in headless Chrome and prints it to a real, text-selectable
+  PDF. Notion only mounts the blocks currently on screen and collapses
+  toggles by default, so `deckk` first grows the browser viewport to the full
+  height of the page, clicks open every toggle block and toggle heading
+  (including nested ones), waits for images, hides the sign-up banner and top
+  bar, and forces the light theme. Only works for pages published to the web
+  (Share → Publish); private pages error out with a hint. Wide inline
+  databases and tables may be clipped at the page edge.
 - **papermark** — handles `papermark.com/view/...` links. Papermark's
   viewer asks its API for the deck once and gets back a signed image URL per
   page, so `deckk` loads the page a single time, catches that response off
