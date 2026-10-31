@@ -18,6 +18,7 @@ import (
 	_ "github.com/holman/deckk/internal/adapter/docsend"
 	_ "github.com/holman/deckk/internal/adapter/googledrive"
 	_ "github.com/holman/deckk/internal/adapter/googleslides"
+	_ "github.com/holman/deckk/internal/adapter/notion"
 	_ "github.com/holman/deckk/internal/adapter/papermark"
 	_ "github.com/holman/deckk/internal/adapter/pdfurl"
 	_ "github.com/holman/deckk/internal/adapter/pitch"
